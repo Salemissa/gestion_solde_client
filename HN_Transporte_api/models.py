@@ -33,6 +33,14 @@ OPERATION_TYPES = [
 ]
 
 
+TYPE_DEPENSES = (
+        ('Carburant', 'Carburant'),
+        ('Entretien', 'Entretien'),
+        ('Réparation', 'Réparation'),
+        ('Autre', 'Autre'),
+    )
+
+
 
 PAYMENT_TYPES = [
                # Retrait pour les retraits d'argent
@@ -119,6 +127,22 @@ class Facture(models.Model):
     
     def __str__(self):
         return f"Facture {self.id} - {self.contrat}"
+    
+
+
+class DepenseCamion(models.Model):
+    
+
+    camion = models.ForeignKey('Camion', on_delete=models.CASCADE, related_name="depenses")
+    date = models.DateField(auto_now_add=True)  # Date de la dépense
+    type_depense = models.CharField(
+        max_length=50,
+        choices=TYPE_DEPENSES,
+        default='Autre'
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)  # Montant de la dépense
+    description = models.TextField(null=True, blank=True)  # Description facultative
+    responsable = models.ForeignKey(User,null=True, blank=True, on_delete=models.CASCADE)
     
 
 

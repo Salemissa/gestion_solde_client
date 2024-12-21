@@ -39,6 +39,7 @@ schema_view = get_schema_view(
 
 
 urlpatterns = [
+     path('', include('HN_Transporte_api.urls')),
     path('admin/', admin.site.urls),
      path('api/', include('HN_Transporte_api.urls')),
     path('rest_auth_api-schema/', rest_frameworkGet_schema_view(

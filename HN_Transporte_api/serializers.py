@@ -79,3 +79,12 @@ class OperationSerializer(serializers.ModelSerializer):
 
         # Return the operation instance along with client id
         return operation
+    
+
+
+class DepenseCamionSerializer(serializers.ModelSerializer):
+
+    class Meta:
+      
+        model = DepenseCamion
+        fields = '__all__'

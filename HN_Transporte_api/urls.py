@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from HN_Transporte_api import views
 from django.urls import path, include
-from .views import CamionActiveViewSet, CamionViewSet, ChauffeurActiveViewSet, ChauffeurViewSet, ClientByCodeAPIView, ClientOperationsView,  ClientViewSet, FactureMonthViewSet, FactureViewSet, GenerateAccountStatement, OperationViewSet
+from .views import CamionActiveViewSet, CamionViewSet, ChauffeurActiveViewSet, ChauffeurViewSet, ClientByCodeAPIView, ClientOperationsView,  ClientViewSet, DepenseCamionViewSet, FactureChercheByMonthViewSet, FactureMonthViewSet, FactureViewSet, GenerateAccountStatement,VoyageSummaryWithFacturesView, OperationViewSet
 router = DefaultRouter()
 
 # router.register(r'willayas', views.WillayaView)
@@ -18,6 +18,8 @@ router.register(r'operations', OperationViewSet)
 router.register(r'chauffeurs', ChauffeurViewSet)
 router.register(r'camions', CamionViewSet)
 router.register(r'factures', FactureViewSet)
+router.register(r'depensecamion', DepenseCamionViewSet)
+
 # router.register(r'pointage-summary', PointageSummaryViewSet, basename='pointage-summary')
 
 
@@ -32,7 +34,8 @@ urlpatterns = [
      path('active/chauffeurs/', ChauffeurActiveViewSet.as_view({'get': 'list'}), name='chauffeur-active-list'),
      path('active/camions/', CamionActiveViewSet.as_view({'get': 'list'}), name='chauffeur-active-list'),
      path('this-month/factures/client/<int:client_id>/', FactureMonthViewSet.as_view({'get': 'list'})),
-  
+      path('month/factures/client/<int:client_id>/', FactureChercheByMonthViewSet.as_view(),name="month-factures"),
+     path('voyages/summary/', VoyageSummaryWithFacturesView.as_view(), name='voyages-summary-by-date'),
 ]
 
 # http://127.0.0.1:8000/api/availability/today/?service=1
