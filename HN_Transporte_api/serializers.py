@@ -88,3 +88,46 @@ class DepenseCamionSerializer(serializers.ModelSerializer):
       
         model = DepenseCamion
         fields = '__all__'
+
+class HistoriqueAvanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HistoriqueAvance
+        fields = '__all__'
+
+class SalaireChauffeurSerializer(serializers.ModelSerializer):
+    reste = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    # Champ personnalisé pour récupérer le nom du chauffeur
+    chauffeur_nom = serializers.CharField(source='chauffeur.name', read_only=True)
+    historiques = HistoriqueAvanceSerializer(many=True, read_only=True)  # Sérialiser les historiques
+    # historiques = serializers.SerializerMethodField() # Sérialiser les historiques
+
+    class Meta:
+        model = SalaireChauffeur
+        fields = ['id', 'chauffeur', 'chauffeur_nom','mois','reste' ,'annee', 'salaire_total', 'avances',  'historiques']
+
+
+    def get_historiques(self, obj):
+        """
+        Récupérer les historiques d'avances associés à un salaire.
+        """
+        historiques = HistoriqueAvance.objects.filter(salaire=obj)
+        return HistoriqueAvanceSerializer(historiques, many=True).data
+
+
+class SalaireChauffeurGetSerializer(serializers.ModelSerializer):
+    reste = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    chauffeur_nom = serializers.CharField(source='chauffeur.name', read_only=True)
+    # historiques = HistoriqueAvanceSerializer(many=True, read_only=True)  # Sérialiser les historiques
+    historiques = serializers.SerializerMethodField() # Sérialiser les historiques
+
+    class Meta:
+        model = SalaireChauffeur
+        fields = ['id', 'chauffeur', 'chauffeur_nom','mois','reste' ,'annee', 'salaire_total', 'avances',  'historiques']
+
+
+    def get_historiques(self, obj):
+        """
+        Récupérer les historiques d'avances associés à un salaire.
+        """
+        historiques = HistoriqueAvance.objects.filter(salaire=obj)
+        return HistoriqueAvanceSerializer(historiques, many=True).data

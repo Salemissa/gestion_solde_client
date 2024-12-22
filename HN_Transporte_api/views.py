@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.shortcuts import get_object_or_404, render
 
 from HN_Transporte.common.custom_viewset import *
@@ -11,7 +12,7 @@ from rest_framework.views import APIView
 from django.db import transaction
 import requests
 from functools import partial
-
+from rest_framework.decorators import action
 
 from .serializers import ClientSerializer
 
@@ -182,7 +183,7 @@ def add_header_footer(canvas, doc, info_client):
     canvas.setFont("Helvetica", 10)
     canvas.drawString(30, height - 65, f"Client : {info_client['client_name']}")
     canvas.drawString(250, height - 65, f"Période : {info_client['date_start']} à {info_client['date_end']}")
-    canvas.drawString(30, height - 85, f"Solde Actuel : {info_client['current_balance']} MRO")
+    canvas.drawString(30, height - 85, f"Solde Actuel : {info_client['current_balance']} CFA")
 
     # Ligne séparatrice (en-tête)
     canvas.line(30, height - 100, width - 30, height - 100)
@@ -500,7 +501,54 @@ class FactureMonthViewSet(ViewSet):
             "date": datetime.now().strftime('%d-%m-%Y'),
         }, status=status.HTTP_200_OK)
     
-    
+
+
+class SalaireChauffeurViewSet(viewsets.ViewSet):
+    """
+    Gestion des salaires des chauffeurs, y compris l'ajout de salaires mensuels pour tous les chauffeurs actifs.
+    """
+
+    def list(self, request):
+        """
+        Renvoie la liste des salaires actuels pour tous les chauffeurs actifs.
+        """
+        mois = datetime.now().month
+        annee = datetime.now().year
+        chauffeurs = Chauffeur.objects.filter(statut=True)
+
+        salaires = SalaireChauffeur.objects.filter(
+            chauffeur__in=chauffeurs,
+            mois=mois,
+            annee=annee
+        )
+
+        # Sérialisation des salaires
+        serializer = SalaireChauffeurSerializer(salaires, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        """
+        Crée des salaires mensuels pour tous les chauffeurs actifs.
+        """
+        return Response({"message": creer_salaires_mensuels()}, status=status.HTTP_201_CREATED)
+
+
+def creer_salaires_mensuels():
+    """
+    Créer des entrées de salaire mensuelles pour tous les chauffeurs actifs.
+    """
+    mois = datetime.now().month
+    annee = datetime.now().year
+    chauffeurs = Chauffeur.objects.filter(statut=True)
+
+    for chauffeur in chauffeurs:
+        SalaireChauffeur.objects.get_or_create(
+            chauffeur=chauffeur,
+            mois=mois,
+            annee=annee,
+            salaire_total=  chauffeur.salaire_defaut # Définissez un salaire par défaut ou une logique dynamique
+        )
+    return f"Salaires créés pour le mois {mois}/{annee}."
 
 
 class FactureChercheByMonthViewSet(APIView):
@@ -626,4 +674,171 @@ class VoyageSummaryWithFacturesView(APIView):
 
 
 
-    
+
+
+# class SalaireChauffeurViewSet(viewsets.ViewSet):
+#     """
+#     Gestion des salaires et avances des chauffeurs.
+#     """
+
+#     @action(detail=False, methods=['post'])
+#     def add_avance(self, request):
+#         """
+#         Ajouter une avance pour un chauffeur.
+#         """
+#         chauffeur_id = request.data.get('chauffeur_id')
+#         montant_avance = request.data.get('montant')
+
+#         if not chauffeur_id or not montant_avance:
+#             return Response({"error": "Les champs 'chauffeur_id' et 'montant' sont obligatoires."}, status=400)
+
+#         try:
+#             montant_avance = float(montant_avance)
+#             if montant_avance <= 0:
+#                 return Response({"error": "Le montant de l'avance doit être supérieur à 0."}, status=400)
+
+#             chauffeur = Chauffeur.objects.get(id=chauffeur_id)
+#             current_date = datetime.now()
+#             current_month = current_date.month
+#             current_year = current_date.year
+
+#             salaire, created = SalaireChauffeur.objects.get_or_create(
+#                 chauffeur=chauffeur,
+#                 mois=current_month,
+#                 annee=current_year,
+#                 defaults={
+#                     "salaire_total": chauffeur.salaire_defaut,
+#                     "avances": 0.0,
+#                 },
+#             )
+
+#             salaire_restant = salaire.salaire_total - salaire.avances
+#             if montant_avance > salaire_restant:
+#                 return Response(
+#                     {"error": f"L'avance dépasse le montant restant du salaire ({salaire_restant:.2f})."},
+#                     status=400,
+#                 )
+
+#             salaire.avances += montant_avance
+#             salaire.save()
+
+#             HistoriqueAvance.objects.create(
+#                 salaire=salaire,
+#                 montant=montant_avance,
+#                 date=datetime.now(),
+#             )
+
+#             return Response(
+#                 {"success": "Avance ajoutée avec succès.", "salaire": SalaireChauffeurSerializer(salaire).data},
+#                 status=200,
+#             )
+
+#         except Chauffeur.DoesNotExist:
+#             return Response({"error": "Chauffeur non trouvé."}, status=404)
+#         except ValueError:
+#             return Response({"error": "Le montant de l'avance doit être un nombre valide."}, status=400)
+
+
+
+
+class AvanceChauffeurView(APIView):
+    """
+    Gestion des salaires et avances des chauffeurs.
+    """
+     
+    def post(self, request):
+        """
+        Ajouter une avance pour un chauffeur.
+        """
+        chauffeur_id = request.data.get('chauffeur')
+        montant_avance = request.data.get('amount')
+
+        if not chauffeur_id or not montant_avance:
+            return Response({"error": "Les champs 'chauffeur_id' et 'montant' sont obligatoires."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            montant_avance = float(montant_avance)
+            if montant_avance <= 0:
+                return Response({"error": "Le montant de l'avance doit être supérieur à 0."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Récupérer le chauffeur
+            chauffeur = Chauffeur.objects.get(id=chauffeur_id)
+
+            current_date = datetime.now()
+            current_month = current_date.month
+            current_year = current_date.year
+
+            # Récupérer ou créer le salaire pour le mois et l'année actuels
+            salaire, created = SalaireChauffeur.objects.get_or_create(
+                chauffeur=chauffeur,
+                mois=current_month,
+                annee=current_year,
+                defaults={
+                    "salaire_total": chauffeur.salaire_defaut,
+                    "avances": 0.0,
+                },
+            )
+
+            # Vérification si l'avance est possible par rapport au salaire restant
+            salaire_restant = salaire.salaire_total -Decimal(salaire.avances) 
+            if montant_avance > salaire_restant:
+                return Response(
+                    {"error": f"L'avance dépasse le montant restant du salaire ({salaire_restant:.2f})."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Ajouter l'avance et sauvegarder le salaire
+            salaire.avances += Decimal(montant_avance)
+            salaire.save()
+
+            # Ajouter l'avance dans l'historique
+            HistoriqueAvance.objects.create(
+                salaire=salaire,
+                montant=montant_avance,
+                date=datetime.now(),
+            )
+
+            # Sérialiser et retourner les informations du salaire
+            serializer = SalaireChauffeurSerializer(salaire)
+            return Response(
+                {"success": "Avance ajoutée avec succès.", "salaire": serializer.data},
+                status=status.HTTP_200_OK,
+            )
+
+        except Chauffeur.DoesNotExist:
+            return Response({"error": "Chauffeur non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError:
+            return Response({"error": "Le montant de l'avance doit être un nombre valide."}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class SalaireChauffeurAPIView(APIView):
+    """
+    Vue pour récupérer le salaire actuel d'un chauffeur.
+    """
+
+    def get(self, request, chauffeur_id):
+        try:
+            # Récupérer le chauffeur par son ID
+            chauffeur = Chauffeur.objects.get(id=chauffeur_id)
+            
+            # Obtenir la date actuelle pour déterminer le mois et l'année en cours
+            current_date = datetime.now()
+            current_month = current_date.month
+            current_year = current_date.year
+
+            # Récupérer le salaire du chauffeur pour le mois et l'année en cours
+            salaire = SalaireChauffeur.objects.filter(
+                chauffeur=chauffeur,
+                mois=current_month,
+                annee=current_year
+            ).first()
+
+            if salaire:
+                # Si un salaire est trouvé, le renvoyer
+                return Response(SalaireChauffeurGetSerializer(salaire).data, status=status.HTTP_200_OK)
+            else:
+                # Si aucun salaire n'est trouvé, renvoyer un message d'erreur
+                return Response({"error": "Salaire non trouvé pour ce chauffeur ce mois."}, status=status.HTTP_404_NOT_FOUND)
+
+        except Chauffeur.DoesNotExist:
+            return Response({"error": "Chauffeur non trouvé."}, status=status.HTTP_404_NOT_FOUND)

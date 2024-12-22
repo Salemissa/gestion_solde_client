@@ -96,6 +96,7 @@ class Chauffeur(models.Model):
     name = models.CharField(max_length=255)  # Adjust max_length as needed
     telephone = models.CharField(max_length=40,blank=True, null=True)  # Adjust length to match your requirements
     statut = models.BooleanField(default=True,)  # Adjust max_length as needed, e.g., "Available", "Busy"
+    salaire_defaut = models.DecimalField(max_digits=10, decimal_places=2, default=10000)
     responsable = models.ForeignKey(User,null=True, blank=True, on_delete=models.CASCADE)
     def __str__(self):
         return self.name
@@ -148,3 +149,27 @@ class DepenseCamion(models.Model):
 
 
 
+class SalaireChauffeur(models.Model):
+    chauffeur = models.ForeignKey(Chauffeur, on_delete=models.CASCADE, related_name="salaires")
+    mois = models.PositiveIntegerField()  # Numéro du mois (1-12)
+    annee = models.PositiveIntegerField()  # Année
+    salaire_total = models.DecimalField(max_digits=10, decimal_places=2)
+    avances = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+
+    class Meta:
+        unique_together = ('chauffeur', 'mois', 'annee')
+
+    def reste(self):
+        return self.salaire_total - self.avances
+
+    def __str__(self):
+        return f"{self.chauffeur.name} - {self.mois}/{self.annee}"
+
+
+class HistoriqueAvance(models.Model):
+    salaire = models.ForeignKey(SalaireChauffeur, on_delete=models.CASCADE, related_name="avances_historique")
+    montant = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Avance de {self.montant} pour {self.salaire}"
