@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     'dj_rest_auth.registration',
     'corsheaders',
     'django_filters',
-    'drf_yasg', #for swagger 
+     #for swagger 
     'api',
 ]
 

@@ -59,11 +59,23 @@ class User(AbstractUser):
 
 class Client(models.Model):
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=100, unique=True,blank=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     responsable = models.ForeignKey(User,null=True, blank=True, on_delete=models.CASCADE)
+
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            # récupérer le dernier code existant
+            last = Client.objects.order_by('-id').first()
+            if last and last.code.isdigit():
+                new_code = str(int(last.code) + 1).zfill(6)  # 6 chiffres
+            else:
+                new_code = "000001"
+            self.code = new_code
+        super().save(*args, **kwargs)
 
 
    

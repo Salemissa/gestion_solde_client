@@ -1,4 +1,5 @@
 from decimal import Decimal
+import arabic_reshaper
 from django.shortcuts import get_object_or_404, render
 
 from Gestion_solde.common.custom_viewset import *
@@ -30,10 +31,21 @@ from rest_framework.viewsets import ViewSet
 
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
-
-
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime, date
-
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from bidi.algorithm import get_display
+pdfmetrics.registerFont(TTFont('Amiri', 'Amiri-Regular.ttf'))
+from reportlab.lib.enums import TA_RIGHT
+from reportlab.platypus import Paragraph
+# Style pour l'Arabe
+arabic_style = ParagraphStyle(
+    'Arabic',
+    fontName='Amiri',
+    fontSize=10,
+    alignment=TA_RIGHT,  # Important pour l'alignement droite->gauche
+)
 
 class ClientViewSet(RetrieveUpdateCreateListViewSet):
     queryset =  Client.objects.all()
@@ -115,304 +127,171 @@ class ClientByCodeAPIView(APIView):
 
 
 
+# ================= ARABIC =================
+def reshape_arabic(text):
+    if not text:
+        return "—"
+    reshaped = arabic_reshaper.reshape(str(text))
+    bidi_text = get_display(reshaped)
+    return bidi_text
 
-
-
-
-
-
-
-
-
-def add_table_header(canvas, doc, header):
-    """Ajoute l'en-tête du tableau sur chaque page."""
+# ================= HEADER / FOOTER =================
+def add_header_footer(canvas, doc, info):
     canvas.saveState()
-    canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(30, doc.bottomMargin + 15, header)
-    canvas.restoreState()
-
-def add_header_footer(canvas, doc, info_client):
-    """Ajoute un en-tête et un pied de page pour chaque page."""
-    canvas.saveState()
-
-    # Dimensions de la page
     width, height = landscape(A4)
 
-    # En-tête
-    canvas.setFont("Helvetica-Bold", 12)
-    canvas.drawString(30, height - 50, "Société ")
-    canvas.drawString(250, height - 50, f"Relevé du Compte  {info_client['client_name']}")
-    canvas.setFont("Helvetica", 10)
-    canvas.drawString(30, height - 65, f"Client : {info_client['client_name']}")
-    canvas.drawString(250, height - 65, f"Période : {info_client['date_start']} à {info_client['date_end']}")
-    canvas.drawString(30, height - 85, f"Solde Actuel : {info_client['current_balance']} MRU")
+    # ======= SOCIETE =======
+    # canvas.setFont("Amiri", 16)
+    # canvas.drawString(30, height - 50, "SOCIETE XYZ")
 
-    # Ligne séparatrice (en-tête)
-    canvas.line(30, height - 100, width - 30, height - 100)
+    # canvas.setFont("Amiri", 10)
+    # canvas.drawString(30, height - 65, "Adresse: Nouakchott - Mauritanie")
+    # canvas.drawString(30, height - 80, "Tel: +222 XX XX XX XX")
 
-    # Pied de page
-    page_number = f"Page {canvas.getPageNumber()}"
-    canvas.setFont("Helvetica", 9)
-    now = datetime.now()
-    formatted_date = now.strftime('%Y-%m-%d %H:%M:%S')
-    canvas.drawString(30, 30, f"Date de génération : {formatted_date}")
-    canvas.drawRightString(width - 30, 30, page_number)
+    # ======= INFO CLIENT =======
+    y = height - 110
+    canvas.setFont("Amiri", 12)
+    canvas.drawString(30, y, f"Client : {info.get('name', '—')}")
+    canvas.drawString(300, y, f"N° Compte : {info.get('account', '000000')}")
+
+    y -= 15
+    canvas.setFont("Amiri", 10)
+    phone = info.get('phone_number') or "—"
+    canvas.drawString(30, y, f"Tel Client  : {phone}")
+
+    y -= 15
+    canvas.drawString(30, y, f"Adresse : {info.get('address', '—')}")
+    canvas.drawString(300, y, f"Période : {info.get('start', '—')} au {info.get('end', '—')}")
+
+    y -= 15
+    canvas.drawString(30, y, f"Solde initial : {info.get('initial', 0.00):.2f} MRU")
+    canvas.drawString(300, y, f"Solde actuel : {info.get('current', 0.00):.2f} MRU")
+
+    canvas.line(30, y-10, width-30, y-10)
+
+    # ======= FOOTER =======
+    canvas.setFont("Amiri", 9)
+    canvas.drawString(30, 30, f"Généré le {datetime.now().strftime('%d-%m-%Y %H:%M')}")
+    canvas.drawRightString(width-30, 30, f"Page {canvas.getPageNumber()}")
 
     canvas.restoreState()
 
-class GenerateAccountStatement(APIView):
+
+
+# ================= API =================
+class GenerateProfessionalStatement(APIView):
+
     def post(self, request):
-        # Simuler des données pour le test
-        start_date = "2024-01-01"
-        end_date = "2024-12-31"
-        client_id = 1
-        client = Client.objects.get(id=client_id)
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(end_date, "%Y-%m-%d")
-        now = datetime.now()
-        formatted_date = now.strftime('%Y-%m-%d %H:%M:%S')
-        response = HttpResponse(content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="facture_{formatted_date}.pdf"'
-
-        # Configurer le document PDF
-        doc = SimpleDocTemplate(
-            response,
-            pagesize=landscape(A4),
-            topMargin=100,
-            bottomMargin=50,
-        )
-        elements = []
-
-        # Simuler les données d'opérations
-        grouped_operation_data = self.get_grouped_operations(start_date, end_date,client_id)
-        current_balance = client.balance
-
-        # Ajouter les informations récapitulatives
-        elements.append(Spacer(1, 20))
-        summary_data = [
-            ["Date de début:", start_date.strftime('%Y-%m-%d')],
-            ["Date de fin:", end_date.strftime('%Y-%m-%d')],
-            ["Solde actuel:", f"{current_balance} UM"],
-        ]
-        summary_table = Table(summary_data)
-        summary_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(summary_table)
-        elements.append(Spacer(1, 20))
-
-        # Ajouter les données d'opérations avec des tableaux
-        for operation_type, operations in grouped_operation_data.items():
-            elements.append(Paragraph(f"Type d'Opération : {operation_type}", getSampleStyleSheet()['Heading3']))
-            table_data = [["Client", "Operation Type", "Amount", "Date"]]
-            totals = {"amount": 0}
-
-            for operation in operations:
-                table_data.append([
-                    operation["client_name"],
-                    operation["operation_type"],
-                    f"{operation['amount']:.2f}",
-                    operation["created_at"]
-                ])
-                totals["amount"] += float(operation["amount"])
-
-            table_data.append(["TOTAL", "", f"{totals['amount']:.2f}", ""])
-            table = Table(table_data, colWidths=[2 * inch, 2 * inch, 1.5 * inch, 1.2 * inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.black),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ]))
-            elements.append(table)
-            elements.append(Spacer(1, 20))
-
-        # Construire le document
-        client_info = {
-            "client_name": client.name,
-            "date_start": start_date.strftime('%Y-%m-%d'),
-            "date_end": end_date.strftime('%Y-%m-%d'),
-            "current_balance": current_balance
-        }
-        doc.build(elements, 
-                  onFirstPage=partial(add_header_footer, info_client=client_info),
-                  onLaterPages=partial(add_header_footer, info_client=client_info))
-        return response
-
-
-    
-
-
-
-class GenerateAccountStatement(APIView):
-    def post(self, request):
-        # Extract and validate the JSON payload
         try:
-            start_date = request.data.get("start_date")
-            end_date = request.data.get("end_date")
-            client_id = request.data.get("client_id")
+            start_date = datetime.strptime(request.data.get("start_date"), "%Y-%m-%d")
+            end_date = datetime.strptime(request.data.get("end_date"), "%Y-%m-%d")
+            client = Client.objects.get(id=request.data.get("client_id"))
+        except:
+            return Response({"error": "Données invalides"}, status=400)
 
-            # start_date= "2024-01-01"
-            # end_date ="2024-12-31"
-            # client_id = 1
-             # Récupérer le client
-            client = Client.objects.get(id=client_id)
-            if not start_date or not end_date:
-                return Response({"error": "Both start_date and end_date are required."}, status=400)
-            start_date = datetime.strptime(start_date, "%Y-%m-%d")
-            end_date = datetime.strptime(end_date, "%Y-%m-%d")
-        except ValueError:
-            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-        
-
-        now = datetime.now()
-        
-        formatted_date = now.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Créer la réponse HTTP avec le type de contenu PDF
         response = HttpResponse(content_type='application/pdf')
-        
-        # Ajouter l'en-tête de disposition du fichier avec un nom dynamique
-        response['Content-Disposition'] = f'attachment; filename="facture_{client.name+formatted_date}.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="releve_{client.name}.pdf"'
 
-        # response = HttpResponse(content_type='application/pdf')
-        # response['Content-Disposition'] = 'attachment; filename="grouped_report.pdf"'
-
-        # Create the PDF document
         doc = SimpleDocTemplate(
             response,
             pagesize=landscape(A4),
-            topMargin=100,  # Reserve space for the header
-            bottomMargin=50,  # Reserve space for the footer
+            topMargin=165,
+            bottomMargin=50
         )
 
         elements = []
 
-       
-        grouped_operation_data = self.get_grouped_operations(start_date, end_date,client_id)
+        # ====== OPERATIONS ======
+        operations = Operation.objects.filter(
+            client=client,
+            date__range=(start_date, end_date)
+        ).order_by('date')
 
-         # Calculer le solde actuel
-        current_balance = client.balance
+        # Calcul solde initial
+        total_before = Operation.objects.filter(
+            client=client,
+            date__lt=start_date
+        ).aggregate(total=models.Sum('amount'))['total'] or 0
 
+        initial_balance = total_before
+        current_balance = initial_balance
 
-           
-        #     # Ajouter le titre
-        # elements.append(Paragraph(f"Relevé du Compte : {client.name}", styles['Title']))
-        elements.append(Spacer(1, 20))
+        # ====== TABLE ======
+        data = [["Date", "Description", "Débit", "Crédit", "Solde"]]
 
-        # Ajouter les informations récapitulatives
-        summary_data = [
-            ["Date de début:", start_date.strftime('%Y-%m-%d') if start_date else "N/A"],
-            ["Date de fin:", end_date.strftime('%Y-%m-%d') if end_date else "N/A"],
-            ["Solde actuel:", f"{current_balance} UM"],
-    ]
-        
-        # Add operation data to PDF
-        for operation_type, operations in grouped_operation_data.items():
-           
-            elements.append(Spacer(0, 12))
-            elements.append(Table([[f"Operation Type: {operation_type}"]], style=[
-                  ('BACKGROUND', (0, 0), (-1, 0), colors.black),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ]))
-            elements.append(Spacer(0, 8))
+        total_debit = 0
+        total_credit = 0
 
-            table_data = [["Operation", "Amount", "Date",
-                           "Paiement","Facteur Number","Description","Date Creation"]]
-            totals = {"amount": 0}
+        for op in operations:
+            desc = reshape_arabic(op.description)
 
-            for operation in operations :
-                table_data.append([
-                    # operation["client_name"],
-                    operation["operation_type"],
-                    f"{operation['amount']:.2f}",
-                    operation["date"],
-                    operation["payment_type"],
-                    operation["facteur_number"],
-                operation["description"],
-                
-                    operation["created_at"]
-                ])
-                totals["amount"] += float(operation["amount"])
+            if op.operation_type == 'Dépôt':
+                debit = 0
+                credit = op.amount
+                current_balance += op.amount
+                total_credit += op.amount
+            else:
+                debit = op.amount
+                credit = 0
+                current_balance -= op.amount
+                total_debit += op.amount
 
-            # Add totals row
-            table_data.append(["TOTAL",  f"{totals['amount']:.2f}", ""])
+            data.append([
+                op.date.strftime("%d-%m-%Y"),
+                Paragraph(desc, arabic_style),
+                f"{debit:.2f}" if debit else "",
+                f"{credit:.2f}" if credit else "",
+                f"{current_balance:.2f}"
+            ])
 
-            table = Table(table_data, colWidths=[2 * inch, 2 * inch, 1.5 * inch, 1.2 * inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.black),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ]))
-            elements.append(table)
-            elements.append(Spacer(0, 24))
+        # Ligne des totaux
+        data.append([
+            "Totaux",
+            "",
+            f"{total_debit:.2f}",
+            f"{total_credit:.2f}",
+            f"{current_balance:.2f}"
+        ])
 
-        client_info = {
-        "client_name": client.name,
-        "date_start": start_date.strftime('%Y-%m-%d') if start_date else "N/A",
-        "date_end": end_date.strftime('%Y-%m-%d') if end_date else "N/A",
-        "current_balance": current_balance
-    }
+        table = Table(
+            data,
+            colWidths=[1.2*inch, 3*inch, 1.2*inch, 1.2*inch, 1.5*inch],
+            repeatRows=1
+        )
 
-        # Build the document with header and footer
-        doc.build(elements, onFirstPage=partial(add_header_footer, info_client=client_info), 
-          onLaterPages=partial(add_header_footer, info_client=client_info))
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F4E79")),  # header
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Amiri'),
+            ('ALIGN', (2,1), (-1,-1), 'RIGHT'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-2,-2), [colors.whitesmoke, colors.transparent]),  # lignes normales
+            ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#D9E1F2")),  # ligne totaux
+            ('FONTNAME', (0,-1), (-1,-1), 'Amiri'),
+            ('ALIGN', (2,-1), (-1,-1), 'RIGHT'),
+        ]))
+
+        elements.append(table)
+
+        # ====== HEADER INFO ======
+        info = {
+            "name": client.name,
+            "account": getattr(client, "code", "000000"),
+            "phone_number": getattr(client, "phone_number", ""),
+            "address": getattr(client, "address", ""),
+            "start": start_date.strftime("%d-%m-%Y"),
+            "end": end_date.strftime("%d-%m-%Y"),
+            "initial": initial_balance,
+            "current": getattr(client, "balance", ""),
+        }
+
+        doc.build(
+            elements,
+            onFirstPage=partial(add_header_footer, info=info),
+            onLaterPages=partial(add_header_footer, info=info)
+        )
 
         return response
-    
-
-
-    
-
-       
-
-    def get_grouped_operations(self, start_date, end_date,client_id):
-       
-        # operation_types = ['FA', 'ACM', 'ADM']
-        operations = Operation.objects.filter(
-            date__range=(start_date, end_date),
-            client_id=client_id  # Assuming you have the client ID available
-             
-        ).values(
-            'operation_type',
-            'amount',
-            'date',
-            'payment_type',
-            'facteur_number',
-            'description',
-            'created_at',
-            'client__name'
-        ).order_by('operation_type','date')
-
-        grouped_operations = {}
-        for operation in operations:
-            operation_type = operation["operation_type"]
-            if operation_type not in grouped_operations:
-                grouped_operations[operation_type] = []
-            grouped_operations[operation_type].append({
-                "operation_type": operation_type,
-                "amount": operation["amount"],
-                "date": operation["date"].strftime("%d-%m-%Y"),
-                "created_at": operation["created_at"].strftime("%d-%m-%Y"),
-                "client_name": operation["client__name"],
-                'facteur_number':operation["facteur_number"],
-                'description':operation["description"],
-                'payment_type':operation["payment_type"],
-                
-            })
-
-        return grouped_operations
-    
 
 
 

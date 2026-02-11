@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from api import views
 from django.urls import path, include
-from .views import   ClientByCodeAPIView, ClientOperationsView,  ClientViewSet, GenerateAccountStatement, OperationViewSet
+from .views import   ClientByCodeAPIView, ClientOperationsView,  ClientViewSet, GenerateProfessionalStatement, OperationViewSet
 router = DefaultRouter()
 
 # router.register(r'willayas', views.WillayaView)
@@ -28,7 +28,7 @@ urlpatterns = [
       
      path('client/<str:client_code>/', ClientByCodeAPIView.as_view(), name='client-by-code'),
     
-     path('account-statement/', GenerateAccountStatement.as_view(), name='account_statement'),
+     path('account-statement/', GenerateProfessionalStatement.as_view(), name='account_statement'),
    
 ]
 
